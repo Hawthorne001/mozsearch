@@ -25,7 +25,7 @@ getopts = "0.2.19"
 graphviz-rust = "0.2.0"
 git2 = "0.16.1"
 globset = "0.4.8"
-hyper = "0.10"
+hyper = "0.14"
 include_dir = "0.7.2"
 insta = { version = "1.14.0", features = ["json"] }
 ipdl_parser = { path = "./ipdl_parser" }
@@ -67,7 +67,7 @@ tree-sitter-typescript = "0.20.2"
 tree-sitter-java = "0.20.2"
 tree-sitter-kotlin = { git = "https://github.com/fwcd/tree-sitter-kotlin.git", rev = "5b7ca7a611eac3234cd0a38b6257effa8888f89d" }
 toml = "0.7.3"
-tonic = "0.7.1"
+tonic = "0.12.2"
 tracing = "0.1.37"
 # We explicitly do not enable the "uuid" feature because by default it will be
 # serialized as a u128 in serde which will error out when attempting to convert
