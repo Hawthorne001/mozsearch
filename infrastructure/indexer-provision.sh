@@ -7,9 +7,6 @@ set -o pipefail # Check all commands in a pipeline
 # Install zlib.h (needed for NSS build)
 sudo apt-get install -y zlib1g-dev
 
-# Install python2 and six (needed for cinnabar and idl-analyze.py)
-sudo apt-get install -y python2.7 python-six
-
 # Building LLVM likes to have ninja; pernosco also can use it if we ever index that.
 sudo apt-get install -y ninja-build
 
@@ -32,21 +29,33 @@ cargo install cargo-insta
 # invaluable when trying to just get things to work when packages are involved
 # that may involve native modules/libraries which can make it hard to uniformly
 # use the latest revision.  I'm somewhat hopeful that
-cargo install mise
+#
+# We are currently installing an older version of mise because as of 2014-12-15
+# rust nightly has problems with usage-lib related to miette.  The version
+# 2024.10.1 was specifically chosen because it was the version we were using on
+# the last successful provision.  The include graph for this seems potentially
+# way more than we need to be able to run node, so I think we will want to drop
+# this dep in the future absent some very good reason.
+cargo install mise@2024.10.1
 
-# Install node.js v18 for scip-typescript
-mise install nodejs@18
+# Install node.js for scip-typescript; github lists v18 and v20 as supported;
+# we are sticking with v18 for now because currently all the invocations
+# hardcode v18 as well; that will need to be addressed.
+SCIP_NODEJS_VERSION=nodejs@18
+mise install ${SCIP_NODEJS_VERSION}
 
 # Install scip-typescript under node.js v18
-mise exec nodejs@18 -- npm install -g @sourcegraph/scip-typescript
+mise exec ${SCIP_NODEJS_VERSION} -- npm install -g @sourcegraph/scip-typescript
 
 # Install scip-python under node.js v18 as well
-#mise exec nodejs@18 -- npm install -g @sourcegraph/scip-python
+#mise exec ${SCIP_NODEJS_VERSION} -- npm install -g @sourcegraph/scip-python
 # To get my fix https://github.com/sourcegraph/scip-python/pull/150
-mise exec nodejs@18 -- npm install -g @asutherland/scip-python
+mise exec ${SCIP_NODEJS_VERSION} -- npm install -g @asutherland/scip-python
 
 # Install a JDK and Coursier.
-sudo apt install -y openjdk-19-jdk
+# v21 is currently the most recent available version of Ubuntu 24.04 (and v19 was
+# removed).
+sudo apt install -y openjdk-21-jdk
 curl -fL "https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz" | gzip -d > cs
 chmod +x cs
 ./cs setup --yes
@@ -64,7 +73,7 @@ set -x # Show commands
 set -eu # Errors/undefined vars are fatal
 set -o pipefail # Check all commands in a pipeline
 
-exec &> update-log
+exec > >(tee -a update-log) 2>&1
 
 date
 

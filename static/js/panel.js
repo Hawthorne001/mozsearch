@@ -13,8 +13,8 @@ var Panel = new (class Panel {
 
     this.permalinkNode = this.findItem("Permalink");
     this.unpermalinkNode = this.findItem("Remove the Permalink");
-    this.logNode = this.findItem("Log");
-    this.rawNode = this.findItem("Raw");
+
+    this.selectedSymbol = null;
 
     this.markdown = {
       filename: {
@@ -30,10 +30,10 @@ var Panel = new (class Panel {
       symbol: {
         node: this.findItem("Symbol Link"),
         isEnabled: () => {
-          return DocumentTitler?.selectedSymbol;
+          return this.selectedSymbol;
         },
         getText: url => {
-          return `[${DocumentTitler.selectedSymbol}](${url})`;
+          return `[${this.selectedSymbol}](${url})`;
         },
       },
       block: {
@@ -163,6 +163,14 @@ var Panel = new (class Panel {
     window.addEventListener("storage", () => this.initFromLocalStorage());
 
     this.initFromLocalStorage();
+
+    if (Settings.fancyBar.enabled) {
+      this.addSymbolSection();
+    }
+
+    if (Settings.debug.ui) {
+      this.addDebugSection();
+    }
   }
 
   get acceleratorsEnabled() {
@@ -188,6 +196,10 @@ var Panel = new (class Panel {
     return this.panel.querySelector(`.item[title="${title}"]`);
   }
 
+  findAccel(key) {
+    return this.panel.querySelector(`.item[data-accel="${key}"]`);
+  }
+
   maybeHandleAccelerator(event) {
     if (!this.acceleratorsEnabled) {
       return;
@@ -203,22 +215,22 @@ var Panel = new (class Panel {
       switch (event.key) {
         case "y":
         case "Y":
-          return this.permalinkNode;
+          return this.findAccel('Y');
         case "l":
         case "L":
-          return this.logNode;
+          return this.findAccel('L');
         case "r":
         case "R":
-          return this.rawNode;
+          return this.findAccel('R');
         case "f":
         case "F":
-          return this.markdown.filename.node;
+          return this.findAccel('F');
         case "s":
         case "S":
-          return this.markdown.symbol.node;
+          return this.findAccel('S');
         case "c":
         case "C":
-          return this.markdown.block.node;
+          return this.findAccel('C');
       }
     })();
 
@@ -234,6 +246,10 @@ var Panel = new (class Panel {
     this.content.setAttribute("aria-hidden", hidden);
     this.content.setAttribute("aria-expanded", !hidden);
     this.icon.classList.toggle("expanded");
+  }
+
+  isExpanded() {
+    return this.icon.classList.contains("expanded");
   }
 
   copyText(copy, text) {
@@ -260,7 +276,10 @@ var Panel = new (class Panel {
     }
 
     const copy = node.querySelector(".copy");
-    const url = this.permalinkNode?.href || document.location.href;
+    let url = this.permalinkNode?.href || document.location.href;
+    if (Settings.fancyBar.enabled) {
+      url = this.reflectSelectedSymbolLineToURL(url);
+    }
     const text = getText(url);
 
     this.copyText(copy, text);
@@ -300,7 +319,14 @@ var Panel = new (class Panel {
       return lineText.substring(0, count);
     }
 
-    for (const line of [...Highlighter.selectedLines].sort((a, b) => a - b)) {
+    const unsortedLines = [...Highlighter.selectedLines];
+    if (Settings.fancyBar.enabled) {
+      const extraLine = this.getLineNumberForSelectedSymbol();
+      if (extraLine !== undefined && !unsortedLines.includes(extraLine)) {
+        unsortedLines.push(extraLine);
+      }
+    }
+    for (const line of unsortedLines.sort((a, b) => a - b)) {
       if (lastLine !== -1 && lastLine != line - 1) {
         lines.push(kPlaceholder);
       }
@@ -328,10 +354,38 @@ var Panel = new (class Panel {
     return lines;
   }
 
-  updateMarkdownState() {
+  findSelectedSymbol() {
+    let selectedSymbol = null;
+    if (Settings.fancyBar.enabled) {
+      if (ContextMenu?.selectedToken) {
+        const symbols = ContextMenu.selectedToken.getAttribute("data-symbols").split(",");
+
+        for (const sym of symbols) {
+          const symInfo = SYM_INFO[sym];
+          if (!symInfo || !symInfo.pretty) {
+            continue;
+          }
+
+          return symInfo.pretty.replace(/[A-Za-z0-9]+ /, "");
+        }
+      }
+    }
+
+    return DocumentTitler?.selectedSymbol;
+  }
+
+  updateCopyState() {
     // If we're on a page without a panel, there's nothing to do.
     if (!this.panel) {
       return;
+    }
+
+    this.selectedSymbol = this.findSelectedSymbol();
+
+    if (Settings.fancyBar.enabled) {
+      if (this.copySymbolBox) {
+        this.copySymbolBox.classList.toggle("disabled", !this.selectedSymbol);
+      }
     }
 
     for (const [_, { node, isEnabled }] of Object.entries(this.markdown)) {
@@ -346,14 +400,226 @@ var Panel = new (class Panel {
         node.setAttribute("aria-disabled", "true");
       }
     }
+
+    if (Settings.fancyBar.enabled) {
+      this.updateSelectedSymbolView();
+    }
+  }
+
+  // Add Symbol section with the symbol name and copy button.
+  addSymbolSection() {
+    const markdownHeader = [...this.content.querySelectorAll("h4")]
+      .find(n => n.textContent == "Copy as Markdown");
+    if (!markdownHeader) {
+      return;
+    }
+
+    const h4 = document.createElement("h4");
+    h4.textContent = "Symbol";
+
+    markdownHeader.before(h4);
+
+    const box = document.createElement("div");
+    box.classList.add("selected-symbol-section");
+
+    const symBox = document.createElement("div");
+    symBox.classList.add("selected-symbol-box");
+    this.selectedSymbolNS = document.createElement("div");
+    this.selectedSymbolNS.classList.add("selected-symbol-ns");
+    symBox.append(this.selectedSymbolNS);
+    this.selectedSymbolLocal = document.createElement("div");
+    this.selectedSymbolLocal.classList.add("selected-symbol-local");
+    symBox.append(this.selectedSymbolLocal);
+    box.append(symBox);
+
+    this.copySymbolBox = document.createElement("div");
+    this.copySymbolBox.classList.add("copy-box");
+    const copyIndicator = document.createElement("span");
+    copyIndicator.classList.add("icon", "copy", "indicator");
+    const copyIcon = document.createElement("span");
+    copyIcon.classList.add("icon-docs", "copy-icon");
+    copyIndicator.append(copyIcon);
+    const copyOk = document.createElement("span");
+    copyOk.classList.add("icon-ok", "tick-icon");
+    copyIndicator.append(copyOk);
+    this.copySymbolBox.append(copyIndicator);
+    box.append(this.copySymbolBox);
+
+    copyIndicator.addEventListener("click", e => {
+      e.preventDefault();
+
+      if (!this.selectedSymbol) {
+        return;
+      }
+
+      if (copyIndicator.hasAttribute("data-copying")) {
+        return;
+      }
+
+      this.copyText(copyIndicator, this.selectedSymbol);
+    });
+
+    markdownHeader.before(box);
+  }
+
+  addDebugSection() {
+    const items = [];
+
+    const pageContent = document.getElementById("content");
+    if (document.location.pathname.match(/^\/[^\/]+\/source\//) &&
+        pageContent && pageContent.classList.contains("source-listing")) {
+      const li = document.createElement("li");
+      const link = document.createElement("a");
+      link.classList.add("icon");
+      link.classList.add("item");
+      link.href = document.location.href.replace(/\/source\//, "/raw-analysis/");
+      link.textContent = "Raw analysis records";
+      li.append(link);
+      items.push(li);
+    }
+
+    if (window.IS_DEBUG_LOGS_AVAILABLE) {
+      const li = document.createElement("li");
+      const link = document.createElement("a");
+      link.classList.add("icon");
+      link.classList.add("item");
+      li.append(link);
+      items.push(li);
+
+      this.showHideLogsLink = link;
+      this.updateDebugSectionForLocation();
+    }
+
+    this.resultsJSONBox = document.getElementById("query-debug-results-json");
+    this.resultsJSONPre = document.getElementById("query-debug-results-json-pre");
+    if (this.resultsJSONBox && this.resultsJSONPre) {
+      const li = document.createElement("li");
+      const button = document.createElement("button");
+      button.classList.add("icon");
+      button.classList.add("item");
+      button.textContent = "Show results JSON";
+      li.append(button);
+      items.push(li);
+
+      button.addEventListener("click", () => {
+        if (this.resultsJSONBox.hasAttribute("aria-hidden")) {
+          this.resultsJSONBox.removeAttribute("aria-hidden");
+          this.resultsJSONPre.textContent = JSON.stringify(window.QUERY_RESULTS_JSON, undefined, 2);
+          button.textContent = "Hide results JSON";
+        } else {
+          this.resultsJSONBox.setAttribute("aria-hidden", "true");
+          this.resultsJSONPre.textContent = "";
+          button.textContent = "Show results JSON";
+        }
+      });
+    }
+
+    if (items.length > 0) {
+      const h4 = document.createElement("h4");
+      h4.textContent = "Debug";
+      this.content.append(h4);
+
+      const ul = document.createElement("ul");
+      ul.append(...items);
+      this.content.append(ul);
+    }
+  }
+
+  updateDebugSectionForLocation() {
+    if (this.showHideLogsLink) {
+      if (document.location.href.includes("&debug=true")) {
+        this.showHideLogsLink.href = document.location.href.replace(/&debug=true/, "");
+        this.showHideLogsLink.textContent = "Hide debug log";
+      } else {
+        this.showHideLogsLink.href = document.location.href + "&debug=true";
+        this.showHideLogsLink.textContent = "Show debug log";
+      }
+    }
+  }
+
+  // Show the selected symbol's namespace prefix and the local name in the
+  // Symbol section.
+  updateSelectedSymbolView() {
+    const sym = this.selectedSymbol || '(no symbol clicked)';
+    const index = sym.lastIndexOf("::");
+    let ns = "";
+    let local = sym;
+    if (index != -1) {
+      ns = sym.slice(0, index + 2);
+      local = sym.slice(index + 2);
+    }
+    if (this.selectedSymbolNS) {
+      this.selectedSymbolNS.textContent = ns;
+    }
+    if (this.selectedSymbolLocal) {
+      this.selectedSymbolLocal.textContent = local;
+    }
+  }
+
+  // Reflect the line number of selected symbol, if any and if it's outside of
+  // the selected lines.
+  reflectSelectedSymbolLineToURL(spec) {
+    const line = this.getLineNumberForSelectedSymbol();
+    if (line === undefined) {
+      return spec;
+    }
+
+    const url = new URL(spec);
+    url.hash = Highlighter.toHash(line);
+    return url.toString();
+  }
+
+  // Return the line number of the selected symbol if any.
+  // Otherwise returns undefined.
+  getLineNumberForSelectedSymbol() {
+    if (!ContextMenu.selectedToken) {
+      return undefined;
+    }
+
+    const containingLine = ContextMenu.selectedToken.closest(".source-line-with-number");
+    if (!containingLine) {
+      return undefined;
+    }
+
+    const lineNumberNode = containingLine.querySelector(".line-number");
+    if (!lineNumberNode) {
+      return undefined;
+    }
+
+    return parseInt(lineNumberNode.dataset.lineNumber, 10);
   }
 
   onSelectedLineChanged() {
-    this.updateMarkdownState();
+    this.updateCopyState();
   }
 
   onSelectedSymbolChanged() {
-    this.updateMarkdownState();
+    this.updateCopyState();
+  }
+
+  onSelectedTokenChanged() {
+    this.updateCopyState();
+  }
+
+  // Returns true if the event is dispatched inside the navigation panel.
+  isOnPanel(event) {
+    return !!event.target.closest("#panel");
+  }
+
+  prepareForSearch() {
+    // Remove any item not shared between search and other contexts.
+    for (const node of [...this.content.childNodes]) {
+      if (node instanceof HTMLElement) {
+        if (node.classList.contains("panel-accel")) {
+          continue;
+        }
+      }
+      this.content.removeChild(node);
+    }
+
+    if (this.isExpanded()) {
+      this.toggle();
+    }
   }
 })();
 
@@ -439,6 +705,26 @@ function blurrifyDiagram() {
 // fact that we're cloning nodes that have identifiers which creates duplicate
 // identifiers is creating a pathological situation?
 //blurrifyDiagram();
+
+// In order to provide more useful click/hover targets for diagram edges, we
+// duplicate line body "path" element to create one with a wider stroke that is
+// not visible.
+function makeDiagramHoverEdges() {
+  const diag = document.querySelector("svg");
+  if (!diag) {
+    return;
+  }
+
+  const edges = diag.querySelectorAll("g.edge > path");
+  for (const path of edges) {
+    const dupe = path.cloneNode(false);
+    dupe.classList.add("clicktarget");
+    // let's insert the clicktarget after the actual path so it is always what
+    // the hit test finds.
+    path.insertAdjacentElement("afterend", dupe);
+  }
+}
+makeDiagramHoverEdges();
 
 // Scroll the first root node of the diagram so that it's centered.  Through use
 // of `?.` this won't freak out if there are no matches.  According to

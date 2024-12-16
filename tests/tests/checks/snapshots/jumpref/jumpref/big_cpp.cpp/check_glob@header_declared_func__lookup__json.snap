@@ -1,6 +1,7 @@
 ---
 source: tests/test_check_insta.rs
 expression: "&to_value(jvl).unwrap()"
+snapshot_kind: text
 ---
 {
   "values": [
@@ -17,6 +18,7 @@ expression: "&to_value(jvl).unwrap()"
           "subsystem": "Core/Big",
           "implKind": "",
           "sizeBytes": null,
+          "ownVFPtrBytes": null,
           "bindingSlots": [],
           "ontologySlots": [],
           "supers": [],
@@ -24,10 +26,11 @@ expression: "&to_value(jvl).unwrap()"
           "fields": [],
           "overrides": [],
           "props": [],
+          "variants": [],
           "args": []
         },
         "jumps": {
-          "def": "big_cpp.cpp#499",
+          "def": "big_cpp.cpp#463",
           "decl": "big_header.h#6"
         }
       }

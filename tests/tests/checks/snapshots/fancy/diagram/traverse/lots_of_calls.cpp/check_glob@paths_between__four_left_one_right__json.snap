@@ -17,6 +17,7 @@ expression: sgc.to_json()
         "parentsym": "T_CallerFour",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -27,6 +28,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": []
       },
       "jumps": {
@@ -46,6 +48,7 @@ expression: sgc.to_json()
         "parentsym": "T_CallerThree",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -56,6 +59,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "four",
@@ -82,6 +86,7 @@ expression: sgc.to_json()
         "parentsym": "T_CallerOne",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -92,6 +97,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "two",
@@ -128,6 +134,7 @@ expression: sgc.to_json()
         "parentsym": "T_CallerTwo",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -138,6 +145,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "three",

@@ -1,6 +1,7 @@
 ---
 source: tests/test_check_insta.rs
 expression: "&to_value(jvl).unwrap()"
+snapshot_kind: text
 ---
 {
   "values": [
@@ -18,6 +19,7 @@ expression: "&to_value(jvl).unwrap()"
           "parentsym": "T_outerNS::AbstractArt",
           "implKind": "",
           "sizeBytes": null,
+          "ownVFPtrBytes": null,
           "bindingSlots": [],
           "ontologySlots": [],
           "supers": [],
@@ -32,10 +34,11 @@ expression: "&to_value(jvl).unwrap()"
           "overriddenBy": [
             "_ZN7outerNS12PracticalArt5beArtEv"
           ],
+          "variants": [],
           "args": []
         },
         "jumps": {
-          "def": "big_cpp.cpp#444"
+          "def": "big_cpp.cpp#418"
         }
       }
     }

@@ -34,16 +34,19 @@ expression: "&to_value(scil).unwrap()"
           "subsystem": null,
           "implKind": "idl",
           "sizeBytes": null,
+          "ownVFPtrBytes": null,
           "bindingSlots": [
             {
               "slotKind": "method",
               "slotLang": "js",
+              "implKind": null,
               "ownerLang": "idl",
               "sym": "#testOctet"
             },
             {
               "slotKind": "method",
               "slotLang": "cpp",
+              "implKind": null,
               "ownerLang": "idl",
               "sym": "_ZN16nsIXPCTestParams9TestOctetEhPhS0_"
             }
@@ -53,7 +56,8 @@ expression: "&to_value(scil).unwrap()"
           "methods": [],
           "fields": [],
           "overrides": [],
-          "props": []
+          "props": [],
+          "variants": []
         }
       },
       "relation": "Queried",
@@ -116,11 +120,13 @@ expression: "&to_value(scil).unwrap()"
           "slotOwner": {
             "slotKind": "method",
             "slotLang": "cpp",
+            "implKind": null,
             "ownerLang": "idl",
             "sym": "XPIDL_nsIXPCTestParams_testOctet"
           },
           "implKind": "",
           "sizeBytes": null,
+          "ownVFPtrBytes": null,
           "bindingSlots": [],
           "ontologySlots": [],
           "supers": [],
@@ -132,6 +138,7 @@ expression: "&to_value(scil).unwrap()"
             "virtual",
             "user"
           ],
+          "variants": [],
           "args": [
             {
               "name": "a",

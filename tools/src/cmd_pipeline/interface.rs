@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use bitflags::bitflags;
 use clap::{Args, ValueEnum};
-use serde::{
-    ser::{SerializeSeq, SerializeStruct},
-    Serialize, Serializer,
-};
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::{json, to_string_pretty, Value};
 use std::{
     cmp::Ordering,
@@ -20,7 +17,7 @@ use crate::{
     file_format::crossref_converter::convert_crossref_value_to_sym_info_rep,
 };
 
-use super::symbol_graph::{SymbolGraphCollection, SymbolGraphNodeId, SymbolGraphNodeSet};
+use super::symbol_graph::{SymbolGraphCollection, SymbolGraphNodeSet};
 
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
 pub enum RecordType {
@@ -68,13 +65,18 @@ pub struct BatchGroupItem {
 /// Hierarchical table whose rows may be optionally associated with symbols.
 pub struct SymbolTreeTable {
     pub node_set: SymbolGraphNodeSet,
-    pub columns: Vec<SymbolTreeTableColumn>,
+    pub platforms: Vec<String>,
     pub rows: Vec<SymbolTreeTableNode>,
+
+    /// Symbols to put into SYM_INFO, in addition to node_set.
+    pub extra_syms: HashMap<String, Value>,
 }
 
 #[derive(Serialize)]
 pub struct SymbolTreeTableList {
     pub tables: Vec<SymbolTreeTable>,
+    #[serde(rename = "className")]
+    pub class_name: Option<String>,
 }
 
 impl SymbolTreeTableList {
@@ -84,9 +86,12 @@ impl SymbolTreeTableList {
             for sym_info in table.node_set.symbol_crossref_infos.iter() {
                 let info = sym_info.crossref_info.clone();
                 jumprefs.insert(
-                    sym_info.symbol.clone(),
+                    sym_info.symbol,
                     convert_crossref_value_to_sym_info_rep(info, &sym_info.symbol, None),
                 );
+            }
+            for (sym, info) in &table.extra_syms {
+                jumprefs.insert(ustr(sym.as_str()), info.clone());
             }
         }
 
@@ -95,8 +100,11 @@ impl SymbolTreeTableList {
 }
 
 #[derive(Serialize)]
-pub struct SymbolTreeTableColumn {
-    pub label: Vec<BasicMarkup>,
+pub struct TextWithSymbol {
+    // Text to go within the `span` tag; this will be escaped.
+    pub text: String,
+    // The `data-symbols` attribute of the `span`.
+    pub symbols: String,
 }
 
 #[derive(Serialize)]
@@ -132,6 +140,8 @@ pub enum BasicMarkup {
     // This is just text, it doesn't need to go in a tag at all.  It will get
     // escaped.
     Text(String),
+    ItalicText(String),
+    Newline,
     // This is text that should link to a query endpoint.  For now we just point
     // it at the "default" config, but one might imagine that we might propagate
     // the current config in use through to any subsequent links.  We might also
@@ -139,70 +149,98 @@ pub enum BasicMarkup {
     // the client side so that a user's preferred config can perform an
     // override.
     QueryLink(BasicLink),
-    // This is a
     SourceLink(BasicLink),
+    // These are a variant of Heading and Text where the text has data-symbols.
+    SymbolHeading(TextWithSymbol),
+    SymbolText(TextWithSymbol),
 }
 
 #[derive(Serialize)]
-pub struct SymbolTreeTableCell {
-    pub header: bool,
-    pub contents: Vec<BasicMarkup>,
-}
-
-impl SymbolTreeTableCell {
-    pub fn empty() -> Self {
-        Self {
-            header: false,
-            contents: vec![],
-        }
-    }
-
-    pub fn header_text(s: String) -> Self {
-        Self {
-            header: true,
-            contents: vec![BasicMarkup::Text(s)],
-        }
-    }
-
-    pub fn text(s: String) -> Self {
-        Self {
-            header: false,
-            contents: vec![BasicMarkup::Text(s)],
-        }
-    }
-}
-
 pub struct SymbolTreeTableNode {
-    pub label: Vec<BasicMarkup>,
-    pub sym_id: Option<SymbolGraphNodeId>,
-    pub col_vals: Vec<SymbolTreeTableCell>,
-    pub children: Vec<SymbolTreeTableNode>,
+    pub name: String,
+    pub symbols: String,
+    pub items: Vec<SymbolTreeTableItem>,
+}
+
+impl SymbolTreeTableNode {
+    pub fn new(name: String, symbols: String) -> Self {
+        Self {
+            name,
+            symbols,
+            items: vec![],
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub enum SymbolTreeTableItem {
+    Field(SymbolTreeTableField),
+    Hole(Vec<Option<String>>),
+    EndPadding(Vec<Option<String>>),
+    Warning(String),
+}
+
+#[derive(Serialize)]
+pub struct SymbolTreeTableField {
+    pub name: String,
+    pub symbols: String,
+    pub types: Vec<SymbolTreeTableFieldType>,
+    pub lines: Vec<String>,
+    #[serde(rename = "offsetAndSize")]
+    pub offset_and_size: Vec<Option<SymbolTreeTableFieldOffsetAndSize>>,
+}
+
+impl SymbolTreeTableField {
+    pub fn new(name: String, symbols: String) -> Self {
+        Self {
+            name,
+            symbols,
+            types: vec![],
+            lines: vec![],
+            offset_and_size: vec![],
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct SymbolTreeTableFieldType {
+    pub name: String,
+    pub symbols: String,
+}
+
+impl SymbolTreeTableFieldType {
+    pub fn new(name: String, symbols: String) -> Self {
+        Self { name, symbols }
+    }
+}
+
+#[derive(Serialize)]
+pub struct SymbolTreeTableFieldOffsetAndSize {
+    pub offset: String,
+    pub size: String,
+}
+
+impl SymbolTreeTableFieldOffsetAndSize {
+    pub fn new(offset: String, size: String) -> Self {
+        Self { offset, size }
+    }
+}
+
+impl Default for SymbolTreeTable {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SymbolTreeTable {
     pub fn new() -> Self {
         Self {
             node_set: SymbolGraphNodeSet::new(),
-            columns: vec![],
+            platforms: vec![],
             rows: vec![],
+            extra_syms: HashMap::new(),
         }
     }
-}
-
-// Ephemeral class to allow for us to implement a serialization helper for
-// SymbolTreeTableNode so that it can have the root/owning SymbolTreeTable's
-// SymbolGraphNodeSet available to convert the SymbolGraphNodeId to a string
-// without us needing to create an full serde_json::Value tree.
-struct SerializingSymbolTreeTableNode<'a> {
-    pub node_set: &'a SymbolGraphNodeSet,
-    pub node: &'a SymbolTreeTableNode,
-}
-
-/// Ephemeral helper for SerializingSymbolTreeTableNode to wrap the sequence
-/// serialization.
-struct SerializingSymbolTreeTableRows<'a> {
-    pub node_set: &'a SymbolGraphNodeSet,
-    pub rows: &'a Vec<SymbolTreeTableNode>,
 }
 
 /// Custom serializer so that the node_set information can be expressed on the
@@ -220,53 +258,9 @@ impl Serialize for SymbolTreeTable {
             "jumprefs",
             &self.node_set.symbols_meta_to_jumpref_json_nomut(),
         )?;
-        stt.serialize_field("columns", &self.columns)?;
-
-        let wrapped_rows = SerializingSymbolTreeTableRows {
-            node_set: &self.node_set,
-            rows: &self.rows,
-        };
-        stt.serialize_field("rows", &wrapped_rows)?;
+        stt.serialize_field("platforms", &self.platforms)?;
+        stt.serialize_field("rows", &self.rows)?;
         stt.end()
-    }
-}
-
-impl<'a> Serialize for SerializingSymbolTreeTableNode<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut stt = serializer.serialize_struct("SymbolTreeTableNode", 2)?;
-        stt.serialize_field("label", &self.node.label)?;
-        if let Some(sym_id) = &self.node.sym_id {
-            stt.serialize_field("sym", &self.node_set.get(sym_id).symbol)?;
-        } else {
-            stt.serialize_field("sym", &Value::Null)?;
-        }
-        stt.serialize_field("colVals", &self.node.col_vals)?;
-        let wrapped_rows = SerializingSymbolTreeTableRows {
-            node_set: &self.node_set,
-            rows: &self.node.children,
-        };
-        stt.serialize_field("children", &wrapped_rows)?;
-        stt.end()
-    }
-}
-
-impl<'a> Serialize for SerializingSymbolTreeTableRows<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(Some(self.rows.len()))?;
-        for e in self.rows {
-            let node = SerializingSymbolTreeTableNode {
-                node_set: self.node_set,
-                node: &e,
-            };
-            seq.serialize_element(&node)?;
-        }
-        seq.end()
     }
 }
 
@@ -385,9 +379,7 @@ impl SymbolQuality {
 
 impl PartialOrd for SymbolQuality {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let self_rank = self.numeric_rank();
-        let other_rank = other.numeric_rank();
-        self_rank.partial_cmp(&other_rank)
+        Some(self.cmp(other))
     }
 }
 
@@ -399,7 +391,6 @@ impl Ord for SymbolQuality {
     }
 }
 
-///
 #[derive(Clone, Serialize)]
 pub enum OverloadKind {
     /// There's just too many overrides!  This would happen for
@@ -504,13 +495,13 @@ impl SymbolCrossrefInfo {
         if let Some(Value::String(s)) = self.crossref_info.pointer("/meta/pretty") {
             ustr(s)
         } else {
-            self.symbol.clone()
+            self.symbol
         }
     }
 
     pub fn get_method_symbols(&self) -> Option<Vec<Ustr>> {
         if let Some(Value::Array(arr)) = self.crossref_info.pointer("/meta/methods") {
-            if arr.len() == 0 {
+            if arr.is_empty() {
                 return None;
             }
             Some(
@@ -562,7 +553,7 @@ impl FlattenedResultsBundle {
     ) {
         self.content_type = "text/html".to_string();
         for path_kind_group in &mut self.path_kind_results {
-            path_kind_group.ingest_html_lines(&path_line_contents, before, after);
+            path_kind_group.ingest_html_lines(path_line_contents, before, after);
         }
     }
 }
@@ -577,12 +568,12 @@ pub struct FlattenedPathKindGroupResults {
 impl FlattenedPathKindGroupResults {
     pub fn accumulate_path_line_sets(
         &self,
-        mut path_line_sets: &mut UstrMap<HashSet<u32>>,
+        path_line_sets: &mut UstrMap<HashSet<u32>>,
         before: u32,
         after: u32,
     ) {
         for kind_group in &self.kind_groups {
-            kind_group.accumulate_path_line_sets(&mut path_line_sets, before, after);
+            kind_group.accumulate_path_line_sets(path_line_sets, before, after);
         }
     }
 
@@ -593,7 +584,7 @@ impl FlattenedPathKindGroupResults {
         after: u32,
     ) {
         for kind_group in &mut self.kind_groups {
-            kind_group.ingest_html_lines(&path_line_contents, before, after);
+            kind_group.ingest_html_lines(path_line_contents, before, after);
         }
     }
 }
@@ -654,12 +645,12 @@ pub struct FlattenedKindGroupResults {
 impl FlattenedKindGroupResults {
     pub fn accumulate_path_line_sets(
         &self,
-        mut path_line_sets: &mut UstrMap<HashSet<u32>>,
+        path_line_sets: &mut UstrMap<HashSet<u32>>,
         before: u32,
         after: u32,
     ) {
         for by_file in &self.by_file {
-            by_file.accumulate_path_line_sets(&mut path_line_sets, before, after);
+            by_file.accumulate_path_line_sets(path_line_sets, before, after);
         }
     }
 
@@ -670,7 +661,7 @@ impl FlattenedKindGroupResults {
         after: u32,
     ) {
         for by_file in &mut self.by_file {
-            by_file.ingest_html_lines(&path_line_contents, before, after);
+            by_file.ingest_html_lines(path_line_contents, before, after);
         }
     }
 }
@@ -688,9 +679,7 @@ impl FlattenedResultsByFile {
         before: u32,
         after: u32,
     ) {
-        let line_set = path_line_sets
-            .entry(self.file.clone())
-            .or_insert_with(|| HashSet::new());
+        let line_set = path_line_sets.entry(self.file).or_default();
         for span in &self.line_spans {
             let range = span.expand_range_in_isolation(before, after);
             for line in range.0..=range.1 {
@@ -867,7 +856,7 @@ pub struct TextFile {
 pub trait PipelineCommand: Debug {
     async fn execute(
         &self,
-        server: &Box<dyn AbstractServer + Send + Sync>,
+        server: &(dyn AbstractServer + Send + Sync),
         input: PipelineValues,
     ) -> Result<PipelineValues>;
 }
@@ -878,7 +867,7 @@ pub trait PipelineCommand: Debug {
 pub trait PipelineJunctionCommand: Debug {
     async fn execute(
         &self,
-        server: &Box<dyn AbstractServer + Send + Sync>,
+        server: &(dyn AbstractServer + Send + Sync),
         input: Vec<(String, PipelineValues)>,
     ) -> Result<PipelineValues>;
 }
@@ -912,7 +901,7 @@ impl NamedPipeline {
             let span = trace_span!("run_named_pipeline_step", cmd = ?cmd);
 
             match cmd
-                .execute(&server, cur_values)
+                .execute(server.as_ref(), cur_values)
                 .instrument(span.clone())
                 .await
             {
@@ -957,7 +946,7 @@ impl JunctionInvocation {
 
         let result = match self
             .command
-            .execute(&server, input_values)
+            .execute(server.as_ref(), input_values)
             .instrument(span.clone())
             .await
         {
@@ -1000,7 +989,7 @@ impl ServerPipeline {
             let span = trace_span!("run_pipeline_step", cmd = ?cmd);
 
             match cmd
-                .execute(&self.server, cur_values)
+                .execute(self.server.as_ref(), cur_values)
                 .instrument(span.clone())
                 .await
             {

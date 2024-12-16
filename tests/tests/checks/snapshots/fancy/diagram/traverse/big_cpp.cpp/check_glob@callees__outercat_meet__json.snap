@@ -1,6 +1,7 @@
 ---
 source: tests/test_check_insta.rs
 expression: sgc.to_json()
+snapshot_kind: text
 ---
 {
   "jumprefs": {
@@ -17,16 +18,18 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
         "methods": [],
         "fields": [],
         "overrides": [],
-        "props": []
+        "props": [],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#241"
+        "def": "big_cpp.cpp#224"
       }
     },
     "F_<T_outerNS::OuterCat>_mIsSecretlyUnfriendly": {
@@ -42,16 +45,18 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
         "methods": [],
         "fields": [],
         "overrides": [],
-        "props": []
+        "props": [],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#242"
+        "def": "big_cpp.cpp#225"
       }
     },
     "F_<T_outerNS::Thing>_mDefunct": {
@@ -67,16 +72,18 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::Thing",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
         "methods": [],
         "fields": [],
         "overrides": [],
-        "props": []
+        "props": [],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#151"
+        "def": "big_cpp.cpp#146"
       }
     },
     "F_<T_outerNS::Thing>_mHP": {
@@ -92,16 +99,18 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::Thing",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
         "methods": [],
         "fields": [],
         "overrides": [],
-        "props": []
+        "props": [],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#147"
+        "def": "big_cpp.cpp#142"
       }
     },
     "T_outerNS::Couch": {
@@ -116,11 +125,13 @@ expression: sgc.to_json()
         "subsystem": "Core/Big",
         "implKind": "",
         "sizeBytes": 16,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [
           {
             "sym": "T_outerNS::Thing",
+            "offsetBytes": 0,
             "props": []
           }
         ],
@@ -164,10 +175,11 @@ expression: sgc.to_json()
         ],
         "fields": [],
         "overrides": [],
-        "props": []
+        "props": [],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#211"
+        "def": "big_cpp.cpp#196"
       }
     },
     "T_outerNS::Human": {
@@ -182,11 +194,13 @@ expression: sgc.to_json()
         "subsystem": "Core/Big",
         "implKind": "",
         "sizeBytes": 16,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [
           {
             "sym": "T_outerNS::Thing",
+            "offsetBytes": 0,
             "props": []
           }
         ],
@@ -253,10 +267,11 @@ expression: sgc.to_json()
         "props": [],
         "subclasses": [
           "T_outerNS::Superhero"
-        ]
+        ],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#185"
+        "def": "big_cpp.cpp#178"
       }
     },
     "T_outerNS::Thing": {
@@ -271,6 +286,7 @@ expression: sgc.to_json()
         "subsystem": "Core/Big",
         "implKind": "",
         "sizeBytes": 16,
+        "ownVFPtrBytes": 8,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -353,6 +369,7 @@ expression: sgc.to_json()
         ],
         "fields": [
           {
+            "lineRange": "#142",
             "pretty": "outerNS::Thing::mHP",
             "sym": "F_<T_outerNS::Thing>_mHP",
             "type": "int",
@@ -362,6 +379,7 @@ expression: sgc.to_json()
             "sizeBytes": 4
           },
           {
+            "lineRange": "#146",
             "pretty": "outerNS::Thing::mDefunct",
             "sym": "F_<T_outerNS::Thing>_mDefunct",
             "type": "_Bool",
@@ -378,10 +396,11 @@ expression: sgc.to_json()
           "T_outerNS::Couch",
           "T_outerNS::OuterCat",
           "T_outerNS::AbstractArt"
-        ]
+        ],
+        "variants": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#141"
+        "def": "big_cpp.cpp#136"
       }
     },
     "_ZN7outerNS5Thing10takeDamageEi": {
@@ -397,6 +416,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::Thing",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -411,6 +431,7 @@ expression: sgc.to_json()
         "overriddenBy": [
           "_ZN7outerNS9Superhero10takeDamageEi"
         ],
+        "variants": [],
         "args": [
           {
             "name": "damage",
@@ -419,7 +440,7 @@ expression: sgc.to_json()
         ]
       },
       "jumps": {
-        "def": "big_cpp.cpp#162"
+        "def": "big_cpp.cpp#155"
       }
     },
     "_ZN7outerNS5Thing6ignoreEv": {
@@ -435,6 +456,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::Thing",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -445,11 +467,12 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#172",
-        "decl": "big_cpp.cpp#160"
+        "def": "big_cpp.cpp#165",
+        "decl": "big_cpp.cpp#153"
       }
     },
     "_ZN7outerNS8OuterCat13isFriendlyCatEv": {
@@ -465,6 +488,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -475,10 +499,11 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#320"
+        "def": "big_cpp.cpp#303"
       }
     },
     "_ZN7outerNS8OuterCat20isSecretlyUnfriendlyEv": {
@@ -494,6 +519,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -504,10 +530,11 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#324"
+        "def": "big_cpp.cpp#305"
       }
     },
     "_ZN7outerNS8OuterCat31isFriendlyIfNotCurrentlyVisibleEv": {
@@ -523,6 +550,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -533,10 +561,11 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": []
       },
       "jumps": {
-        "def": "big_cpp.cpp#339"
+        "def": "big_cpp.cpp#320"
       }
     },
     "_ZN7outerNS8OuterCat4meetERNS_5CouchE": {
@@ -552,6 +581,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -562,6 +592,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "couch",
@@ -571,7 +602,7 @@ expression: sgc.to_json()
         ]
       },
       "jumps": {
-        "def": "big_cpp.cpp#371"
+        "def": "big_cpp.cpp#348"
       }
     },
     "_ZN7outerNS8OuterCat4meetERNS_5HumanE": {
@@ -587,6 +618,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -597,6 +629,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "human",
@@ -606,7 +639,7 @@ expression: sgc.to_json()
         ]
       },
       "jumps": {
-        "def": "big_cpp.cpp#360"
+        "def": "big_cpp.cpp#339"
       }
     },
     "_ZN7outerNS8OuterCat5shredERNS_5ThingE": {
@@ -622,6 +655,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -632,6 +666,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "thing",
@@ -641,7 +676,7 @@ expression: sgc.to_json()
         ]
       },
       "jumps": {
-        "def": "big_cpp.cpp#410"
+        "def": "big_cpp.cpp#387"
       }
     },
     "_ZN7outerNS8OuterCat7destroyERNS_5ThingE": {
@@ -657,6 +692,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::OuterCat",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -667,6 +703,7 @@ expression: sgc.to_json()
           "instance",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "thing",
@@ -676,7 +713,7 @@ expression: sgc.to_json()
         ]
       },
       "jumps": {
-        "def": "big_cpp.cpp#417"
+        "def": "big_cpp.cpp#392"
       }
     },
     "_ZN7outerNS9Superhero10takeDamageEi": {
@@ -692,6 +729,7 @@ expression: sgc.to_json()
         "parentsym": "T_outerNS::Superhero",
         "implKind": "",
         "sizeBytes": null,
+        "ownVFPtrBytes": null,
         "bindingSlots": [],
         "ontologySlots": [],
         "supers": [],
@@ -707,6 +745,7 @@ expression: sgc.to_json()
           "virtual",
           "user"
         ],
+        "variants": [],
         "args": [
           {
             "name": "damage",
@@ -715,7 +754,7 @@ expression: sgc.to_json()
         ]
       },
       "jumps": {
-        "def": "big_cpp.cpp#202"
+        "def": "big_cpp.cpp#187"
       }
     }
   },
