@@ -29,21 +29,25 @@ expression: "&to_value(scil).unwrap()"
           "structured": 1,
           "pretty": "sample::JavaLibrary::C",
           "sym": "S_jvm_sample/JavaLibrary#C#",
-          "type_pretty": null,
+          "type_pretty": "final class C",
           "kind": "class",
           "subsystem": null,
           "parentsym": "S_jvm_sample/JavaLibrary#",
           "implKind": "impl",
           "sizeBytes": null,
+          "alignmentBytes": null,
+          "ownVFPtrBytes": null,
           "bindingSlots": [],
           "ontologySlots": [],
           "supers": [
             {
               "sym": "S_jvm_sample/JavaLibrary#I0#",
+              "offsetBytes": 0,
               "props": []
             },
             {
               "sym": "S_jvm_sample/JavaLibrary#I1#",
+              "offsetBytes": 0,
               "props": []
             }
           ],
@@ -57,7 +61,8 @@ expression: "&to_value(scil).unwrap()"
           ],
           "fields": [],
           "overrides": [],
-          "props": []
+          "props": [],
+          "variants": []
         }
       },
       "relation": "Queried",

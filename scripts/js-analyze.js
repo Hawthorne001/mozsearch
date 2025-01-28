@@ -1,5 +1,5 @@
 let nextSymId = 0;
-let localFile, sourcePath, urlMapFile, fileIndex, mozSearchRoot, urlMap;
+let localFile, sourcePath, fileIndex, mozSearchRoot;
 
 // The parsing mode we're currently using.
 let gParsedAs = "script";
@@ -99,8 +99,11 @@ const FILENAME_INTERVENTIONS = [
     // "dromaeo" is from:
     // https://searchfox.org/mozilla-central/source/testing/talos/talos/tests/dromaeo/test-tail.js
     //
+    // dom/media/test/test_imagecapture.html had syntax error which is fixed in trunk.
+    //
     // "JSTests" is wubkat.
-    includes_list: ["error", "fixture", "bad", "syntax", "invalid", "dromaeo", "/jstests/", "test_bug531176.html"],
+    includes_list: ["error", "fixture", "bad", "syntax", "invalid", "dromaeo", "/jstests/",
+                    "test_bug531176.html", "dom/media/test/test_imagecapture.html"],
     severity: "INFO",
     // JS engines love to have test cases that intentionally have syntax errors
     // in them.  To this end, we downgrade any such file to an info.  This
@@ -277,7 +280,13 @@ const FILENAME_INTERVENTIONS = [
     includes_list: ["/wubkat/"],
     severity: "INFO",
     prepend: "Wubkat failsafe: "
-  }
+  },
+  {
+    includes_list: ["devtools/client/debugger/test/mochitest/examples/inline-preview.js",
+                    "devtools/client/debugger/test/mochitest/examples/preview.js"],
+    severity: "INFO",
+    prepend: "It may contain experimental syntax: ",
+  },
 ];
 
 function logError(msg)
@@ -363,6 +372,13 @@ SymbolTable.Symbol.prototype = {
     this.uses.push(loc);
   },
 };
+
+function isSameLocation(loc1, loc2) {
+  return loc1.start.line == loc2.start.line &&
+    loc1.start.column == loc2.start.column &&
+    loc1.end.line == loc2.end.line &&
+    loc1.end.column == loc2.end.column;
+}
 
 function posBefore(pos1, pos2) {
   return pos1.line < pos2.line ||
@@ -474,18 +490,6 @@ function memberPropLoc(expr)
   return idLoc;
 }
 
-function ensureURLMap() {
-  if (urlMap) {
-    return;
-  }
-
-  try {
-    urlMap = JSON.parse(snarf(urlMapFile));
-  } catch (e) {
-    urlMap = {};
-  }
-}
-
 function atEscape(text) {
   return text.replace(/[^A-Za-z0-9_/]/g, matched => "@" + matched.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
 }
@@ -549,6 +553,15 @@ let Analyzer = {
   // a new, non-consecutive `line` each time, the missing lines are padded out
   // with empty strings.
   _lines: [],
+
+  resetState() {
+    this.symbols = new SymbolTable();
+    this.symbolTableStack = [];
+    this.nameForThis = null;
+    this.className = null;
+    this.contextStack = [];
+    this._lines = [];
+  },
 
   /**
    * Given a position, find the first instance of the given string starting
@@ -1047,81 +1060,61 @@ let Analyzer = {
       break;
     }
 
-    // HEY HEY HEY HEY HEY
-    //
-    // ALL THE MODULE STUFF BELOW IS LARGELY NO-OPs EXCEPT FOR EXPORT TRAVERSALS
-    //
-    // This is not particularly useful!  If someone wants to enhance this
-    // current implementation, that's great!  For now the stubbing is being done
-    // so that we can at least index module JS files without exploding.
-    //
-    // The short-to-medium-term plan is
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1740290 once
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1761287 lands.
-
-    // Is this even a thing?
-    case "ModuleRequest": {
-      break;
-    }
-
-    case "ImportAssertion": {
-      break;
-    }
-
     case "ImportDeclaration": {
-      if (stmt.moduleRequest && stmt.moduleRequest.source &&
-          stmt.moduleRequest.source.type === "Literal") {
-        this.maybeLinkifyLiteral(stmt.moduleRequest.source);
-      }
-      break;
-    }
+      for (const spec of stmt.specifiers) {
+        if (spec.type === "ImportSpecifier" ||
+            spec.type === "ImportNamespaceSpecifier") {
+          this.pattern(spec.name);
 
-    // These may only be under the ImportDeclaration's specifiers?
-    case "ImportSpecifier": {
-      break;
-    }
-
-    case "ImportNamespaceSpecifier": {
-      break;
-    }
-
-    case "ExportDeclaration": {
-      // Useful debugging for investigation if you want:
-      //printErr(`seeing export: ${JSON.stringify(stmt, null, 2)}\n`);
-
-      // Ignore default exports because they exist in an expression context for
-      // sure.  We frequently see both identifiers and call expresssions.  And
-      // I know from experience they effectively can't serve as a dec statement
-      // that contributes to the local namespace.  (They can serve as a decl
-      // for whoever imports them, but we don't support that on the import side,
-      // so there isn't much point.)
-      if (!stmt.isDefault && stmt.declaration) {
-        // Let's also wrap this in a catch which we log as a warning so we can
-        // keep going.
-        try {
-          this.statement(stmt.declaration);
-        } catch (ex) {
-          logError(`Weirdness processing export, ignoring: ${ex}`);
+          if (spec.type === "ImportSpecifier" &&
+              !isSameLocation(spec.id.loc, spec.name.loc)) {
+            this.expression(spec.id);
+          }
         }
       }
 
       if (stmt.moduleRequest && stmt.moduleRequest.source &&
           stmt.moduleRequest.source.type === "Literal") {
-        this.maybeLinkifyLiteral(stmt.moduleRequest.source);
+        this.maybeLinkifyModuleSpecifier(stmt.moduleRequest.source);
       }
       break;
     }
 
-    // these 3 may only exist under the ExportDeclaration's "specifiers"?
-    case "ExportSpecifier": {
-      break;
-    }
+    case "ExportDeclaration": {
+      if (stmt.declaration) {
+        if (stmt.declaration.type === "FunctionDeclaration") {
+          if (stmt.declaration.id) {
+            this.statement(stmt.declaration);
+          }
+        }
+        else if (stmt.declaration.type === "VariableDeclaration" ||
+                 stmt.declaration.type === "ClassStatement") {
+          this.statement(stmt.declaration);
+        } else {
+          this.expression(stmt.declaration);
+        }
+      }
 
-    case "ExportNamespaceSpecifier": {
-      break;
-    }
+      if (stmt.specifiers) {
+        for (const spec of stmt.specifiers) {
+          if (spec.type === "ExportSpecifier" ||
+              spec.type === "ExportNamespaceSpecifier") {
+            if (spec.name.type !== "Literal") {
+              this.pattern(spec.name);
+            }
 
-    case "ExportBatchSpecifier": {
+            if (spec.type === "ExportSpecifier" &&
+                !isSameLocation(spec.id.loc, spec.name.loc)) {
+              this.expression(spec.id);
+            }
+          }
+        }
+      }
+
+      if (stmt.moduleRequest && stmt.moduleRequest.source &&
+          stmt.moduleRequest.source.type === "Literal") {
+        this.maybeLinkifyModuleSpecifier(stmt.moduleRequest.source, true);
+      }
       break;
     }
 
@@ -1420,7 +1413,12 @@ let Analyzer = {
       break;
 
     case "MetaProperty": // Not sure what this is!
-    case "CallImport": // dynamic import statement, see e.g. https://hg.mozilla.org/mozilla-central/file/4df1ba9c741f/testing/web-platform/tests/html/semantics/scripting-1/the-script-element/module/dynamic-import/propagate-nonce-external.js#l3
+
+    case "CallImport":
+      if (expr.arguments && expr.arguments.length > 0 &&
+          expr.arguments[0].type === "Literal") {
+        this.maybeLinkifyModuleSpecifier(expr.arguments[0]);
+      }
       break;
 
     default:
@@ -1490,29 +1488,49 @@ let Analyzer = {
 
   maybeLinkifyLiteral(expr) {
     if (typeof expr.value !== "string") {
-      return;
+      return false;
     }
 
     if (!expr.value.startsWith("chrome://") &&
         !expr.value.startsWith("resource://")) {
-      return;
+      return false;
     }
-
-    ensureURLMap();
-
-    if (!(expr.value in urlMap)) {
-      return;
-    }
-    const targetPaths = urlMap[expr.value];
 
     const name = "\"" + expr.value + "\"";
     const loc = expr.loc;
-    for (const targetPath of targetPaths) {
-      const sym = "FILE_" + atEscape(targetPath);
-      this.source(loc, name, "file,use", "file " + targetPath, sym);
-      this.target(loc, name, "use", targetPath, sym);
-    }
+    const url = expr.value;
+    const sym = "URL_" + atEscape(url);
+    this.source(loc, name, "file,use", "file " + url, sym);
+    this.target(loc, name, "use", url, sym);
+
+    return true;
   },
+
+  maybeLinkifyModuleSpecifier(expr) {
+    if (typeof expr.value !== "string") {
+      return false;
+    }
+
+    if (this.maybeLinkifyLiteral(expr)) {
+      return true;
+    }
+
+    if (!expr.value.startsWith(".")) {
+      return false;
+    }
+
+    // Relative path import.
+    // This is going to be replaced by replace-aliases.py based on
+    // the URL of the current file.
+    const name = "\"" + expr.value + "\"";
+    const loc = expr.loc;
+    const relpath = expr.value;
+    const sym = "RELPATH";
+    this.source(loc, name, "file,use", relpath, sym);
+    this.target(loc, name, "use", relpath, sym);
+
+    return true;
+  }
 };
 
 function printFileTarget(path) {
@@ -1711,6 +1729,10 @@ class BaseParser {
         this.handleEventListener(tag, prop);
         continue;
       }
+      if (prop == "STYLE") {
+        this.handleStyleProp(tag, prop);
+        continue;
+      }
 
       let text = tag.attrs[prop].value;
       if (text.startsWith("chrome://") || text.startsWith("resource://")) {
@@ -1740,23 +1762,14 @@ class BaseParser {
   }
 
   handleURLAttribute(tag, prop) {
-    let text = tag.attrs[prop].value;
+    let url = tag.attrs[prop].value;
     let line = tag.attrs[prop].valueLine;
     let column = tag.attrs[prop].valueColumn;
 
-    ensureURLMap();
-
-    if (!(text in urlMap)) {
-      return;
-    }
-    const targetPaths = urlMap[text];
-
-    const locStr = `${line + 1}:${column}-${column + text.length}`;
-    for (const targetPath of targetPaths) {
-      const sym = "FILE_" + atEscape(targetPath);
-      Analyzer.source(locStr, text, "file,use", "file " + targetPath, sym);
-      Analyzer.target(locStr, text, "use", targetPath, sym);
-    }
+    const locStr = `${line + 1}:${column}-${column + url.length}`;
+    const sym = "URL_" + atEscape(url);
+    Analyzer.source(locStr, url, "file,use", "file " + url, sym);
+    Analyzer.target(locStr, url, "use", url, sym);
   }
 
   getScriptTarget(tag) {
@@ -1811,6 +1824,28 @@ class BaseParser {
     if (ast) {
       Analyzer.program(ast);
     }
+  }
+
+  handleStyle(text, tag) {
+    let {line, column} = tag;
+
+    let spaces = " ".repeat(column);
+    text = spaces + text;
+
+    const analyzer = new CSSAnalyzer({ line: line + 1 });
+    analyzer.parse(text);
+  }
+
+  handleStyleProp(tag, prop) {
+    let text = tag.attrs[prop].value;
+    let line = tag.attrs[prop].valueLine;
+    let column = tag.attrs[prop].valueColumn;
+
+    let spaces = " ".repeat(column);
+    text = spaces + text;
+
+    const analyzer = new CSSAnalyzer({ line: line + 1 });
+    analyzer.parse(text);
   }
 }
 
@@ -2056,8 +2091,11 @@ class XBLParser extends XMLParser {
 //
 // js-analyze.js is executed for single file, and the code path
 // "analyzeFile -> analyze* -> loadSax" is taken at most once.
-function loadSax()
+function ensureSax()
 {
+  if ("sax" in globalThis) {
+    return;
+  }
   load(mozSearchRoot + "/sax/sax.js");
 }
 
@@ -2065,7 +2103,7 @@ function analyzeXBL(filename)
 {
   let text = preprocess(filename, line => `<!--${line}-->`);
 
-  loadSax();
+  ensureSax();
   let parser = sax.parser(false, {trim: false, normalize: false, xmlns: true, position: true});
 
   new XBLParser(filename, parser);
@@ -2088,10 +2126,27 @@ class XULParser extends XMLParser {
 
 class HTMLParser extends BaseParser {
   constructor(filename, parser) {
-    super(filename, parser)
+    super(filename, parser);
 
-    for (let prop of ["onscript"]) {
+    this.inStyle = false;
+    this.currentStyle = "";
+    for (let prop of ["onscript", "ontext"]) {
       parser[prop] = this[prop].bind(this);
+    }
+  }
+
+  onopentag(tag) {
+    super.onopentag(tag);
+
+    if (tag.local.toUpperCase() === "STYLE") {
+      this.inStyle = true;
+      this.currentStyle = "";
+    }
+  }
+
+  ontext(text) {
+    if (this.inStyle) {
+      this.currentStyle += text;
     }
   }
 
@@ -2099,6 +2154,10 @@ class HTMLParser extends BaseParser {
     switch (tagName) {
     case "SCRIPT":
       this.handleScript(this.currentScript, tag);
+      break;
+    case "STYLE":
+      this.inStyle = false;
+      this.handleStyle(this.currentStyle, tag);
       break;
     }
 
@@ -2118,7 +2177,7 @@ function analyzeXUL(filename)
     text = "<root>" + text + "</root>";
   }
 
-  loadSax();
+  ensureSax();
   let parser = sax.parser(false, {trim: false, normalize: false, xmlns: true, position: true, noscript: true});
 
   let parser2 = new XULParser(filename, parser);
@@ -2137,7 +2196,7 @@ function analyzeHTML(filename)
     text = "<root>" + text + "</root>";
   }
 
-  loadSax();
+  ensureSax();
   let parser = sax.parser(false, {trim: false, normalize: false, xmlns: true, position: true, noscript: false});
 
   let parser2 = new HTMLParser(filename, parser);
@@ -2146,6 +2205,210 @@ function analyzeHTML(filename)
   parser.close();
 
   parser2.processEventListeners();
+}
+
+class CSSAnalyzer {
+  static analyze_css_source = null;
+
+  static ensureCSSAnalyzer() {
+    if (CSSAnalyzer.analyze_css_source) {
+      return;
+    }
+
+    const wasmPath = mozSearchRoot + "/scripts/web-analyze/wasm-css-analyzer/out";
+    const wasmBinary = createMappedArrayBuffer(wasmPath + "/wasm_css_analyzer.wasm");
+
+    // getrandom crate requires WebCrypto API.
+    const MyCrypto = {
+      getRandomValues(array) {
+        let i = 0, length = array.length;
+        while (i < length) {
+          array[i++] = Math.random() * 256;
+        }
+        return array;
+      }
+    };
+
+    // The binding JS requires TextEncoder and TextDecoder.
+    class MyTextEncoder {
+      encode(text) {
+        // This is called only when the text is non-ASCII.
+
+        let units = [], index = 0, length = text.length,
+            n, trail, b1, b2, b3, b4;
+
+        const NonBMPMin = 0x10000,
+              NonBMPMax = 0x10FFFF,
+              LeadSurrogateMin = 0xD800,
+              LeadSurrogateMax = 0xDBFF,
+              TrailSurrogateMin = 0xDC00,
+              TrailSurrogateMax = 0xDFFF;
+
+        while (index < length) {
+          n = text.charCodeAt(index++);
+
+          if (n <= 0x7F) {
+            units.push(n);
+            continue;
+          }
+
+          if (n >= LeadSurrogateMin && n <= LeadSurrogateMax) {
+            trail = text.charCodeAt(index++);
+            n = (n << 10) + trail +
+              (NonBMPMin - (LeadSurrogateMin << 10) - TrailSurrogateMin);
+          }
+
+          if (n > NonBMPMax) {
+            units.push(0x3F);
+          } else if (n >= 0x010000) {
+            b4 = n & 0x3F;
+            n >>= 6;
+            b3 = n & 0x3F;
+            n >>= 6;
+            b2 = n & 0x3F;
+            n >>= 6;
+            b1 = n & 0x3F;
+            units.push(b1 | 0b1111_0000);
+            units.push(b2 | 0b1000_0000);
+            units.push(b3 | 0b1000_0000);
+            units.push(b4 | 0b1000_0000);
+          } else if (n >= 0x0800) {
+            b3 = n & 0x3F;
+            n >>= 6;
+            b2 = n & 0x3F;
+            n >>= 6;
+            b1 = n & 0x3F;
+            units.push(b1 | 0b1110_0000);
+            units.push(b2 | 0b1000_0000);
+            units.push(b3 | 0b1000_0000);
+          } else {
+            b2 = n & 0x3F;
+            n >>= 6;
+            b1 = n & 0x3F;
+            units.push(b1 | 0b1100_0000);
+            units.push(b2 | 0b1000_0000);
+          }
+        }
+
+        return new Uint8Array(units);
+      }
+    }
+
+    class MyTextDecoder {
+      decode(buffer) {
+        // This is used for all string received from wasm.
+        // This is called only with complete data.
+
+        if (buffer === undefined) {
+          return "";
+        }
+
+        // Converted from DecodeOneUtf8CodePointInline in m-c/mfbt/Utf8.h,
+        // with substituting bad code units with "?".
+
+        let chars = [], index = 0, length = buffer.length,
+            n, remaining, min, actual, i, unit;
+
+        next: while (index < length) {
+          n = buffer[index++];
+
+          if ((n & 0b1000_0000) == 0b0000_0000) {
+            chars.push(String.fromCodePoint(n));
+            continue;
+          }
+
+          // |n| determines the number of trailing code units in the code point
+          // and the bits of |n| that contribute to the code point's value.
+          if ((n & 0b1110_0000) == 0b1100_0000) {
+            remaining = 1;
+            min = 0x80;
+            n &= 0b0001_1111;
+          } else if ((n & 0b1111_0000) == 0b1110_0000) {
+            remaining = 2;
+            min = 0x800;
+            n &= 0b0000_1111;
+          } else if ((n & 0b1111_1000) == 0b1111_0000) {
+            remaining = 3;
+            min = 0x10000;
+            n &= 0b0000_0111;
+          } else {
+            chars.push("?");
+            continue;
+          }
+
+          // If the code point would require more code units than remain, the encoding
+          // is invalid.
+          actual = length - i;
+          if (actual < remaining) {
+            chars.push("?");
+            continue;
+          }
+
+          for (i = 0; i < remaining; i++) {
+            unit = buffer[index++];
+
+            // Every non-leading code unit in properly encoded UTF-8 has its high
+            // bit set and the next-highest bit unset.
+            if (!((unit & 0b1100_0000) == 0b1000_0000)) {
+              index -= i + 1;
+              chars.push("?");
+              continue next;
+            }
+
+            // The code point being encoded is the concatenation of all the
+            // unconstrained bits.
+            n = (n << 6) | (unit & 0b0011_1111);
+          }
+
+          // UTF-16 surrogates and values outside the Unicode range are invalid.
+          if (n > 0x10FFFF || (0xD800 <= n && n <= 0xDFFF)) {
+            index -= remaining;
+            chars.push("?");
+            continue;
+          }
+
+          // Overlong code points are also invalid.
+          if (n < min) {
+            index -= remaining;
+            chars.push("?");
+            continue;
+          }
+
+          chars.push(String.fromCodePoint(n));
+        }
+
+        return chars.join("");
+      }
+    }
+
+    globalThis.crypto = MyCrypto;
+    globalThis.TextEncoder = MyTextEncoder;
+    globalThis.TextDecoder = MyTextDecoder;
+    load(wasmPath + "/wasm_css_analyzer.js");
+    globalThis.initSync(wasmBinary);
+
+    CSSAnalyzer.analyze_css_source = globalThis.analyze_css_source;
+  }
+
+  constructor({ line = 1 } = {}) {
+    CSSAnalyzer.ensureCSSAnalyzer();
+
+    this.startLine = line;
+  }
+
+  parse(text) {
+    try {
+      CSSAnalyzer.analyze_css_source(text, this.startLine, function(s) {
+        print(s);
+      });
+    } catch (e) {
+      if (e && e.message && e.message.includes("index out of bounds")) {
+        // Deeply nested rules can hit stack overflow.
+        return;
+      }
+      throw e;
+    }
+  }
 }
 
 function analyzeFile(filename)
@@ -2161,12 +2424,57 @@ function analyzeFile(filename)
   }
 }
 
-fileIndex = scriptArgs[0];
-mozSearchRoot = scriptArgs[1];
-localFile = scriptArgs[2];
-sourcePath = scriptArgs[3];
-urlMapFile = scriptArgs[4];
+function resetState() {
+  gParsedAs = "script";
+  gFilename = "";
+  gIncludeUsed = false;
+  gCouldBeJson = false;
+  gAttrName = "";
+  nextSymId = 0;
+  Analyzer.resetState();
+}
 
-printFileTarget(sourcePath);
 
-analyzeFile(localFile);
+function decodeUTF8(s) {
+  if (s.match(/[^\x00-\x7F]/)) {
+    return decodeURIComponent(s.replace(/./g, m => {
+      return "%" + m.charCodeAt(0).toString(16).padStart(2, '0');
+    }));
+  }
+
+  return s;
+}
+
+mozSearchRoot = scriptArgs[0];
+const localRoot = scriptArgs[1];
+const analysisRoot = scriptArgs[2];
+
+while (true) {
+  const line = readline();
+  if (!line) {
+    break;
+  }
+
+  resetState();
+
+  const m = line.match(/^([^ ]+) (.+)$/);
+  if (!m) {
+    continue;
+  }
+  fileIndex = m[1];
+
+  // readline() returns raw byte sequence.
+  // The filename is UTF-8 encoded in the js-files file.
+  const sourcePath = decodeUTF8(m[2]);
+
+  localFile = localRoot + "/" + sourcePath;
+  const analysisFile = analysisRoot + "/" + sourcePath;
+
+  const origOut = os.file.redirect(analysisFile);
+
+  printFileTarget(sourcePath);
+
+  analyzeFile(localFile);
+
+  os.file.close(os.file.redirect(origOut));
+}

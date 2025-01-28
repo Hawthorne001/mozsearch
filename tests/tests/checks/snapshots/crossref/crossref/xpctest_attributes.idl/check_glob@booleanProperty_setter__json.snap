@@ -55,11 +55,14 @@ expression: "&to_value(scil).unwrap()"
           "slotOwner": {
             "slotKind": "setter",
             "slotLang": "cpp",
+            "implKind": null,
             "ownerLang": "idl",
             "sym": "XPIDL_nsIXPCTestObjectReadWrite_booleanProperty"
           },
           "implKind": "",
           "sizeBytes": null,
+          "alignmentBytes": null,
+          "ownVFPtrBytes": null,
           "bindingSlots": [],
           "ontologySlots": [],
           "supers": [],
@@ -71,6 +74,7 @@ expression: "&to_value(scil).unwrap()"
             "virtual",
             "user"
           ],
+          "variants": [],
           "args": [
             {
               "name": "aBooleanProperty",
