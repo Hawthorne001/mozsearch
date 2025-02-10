@@ -8,6 +8,15 @@ edition = "2018"
 tonic-build = "0.7.1"
 
 [dependencies]
+cssparser = "0.29"
+itertools = "0.10"
+# Note that the "rc" feature as documented at https://serde.rs/feature-flags.html
+# does not make any effort to do interning
+serde = { version = "1.0.196", features = ["derive", "rc", "std"] }
+serde_json = { version = "1.0.113", features = ["preserve_order"] }
+serde_repr = "0.1.18"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-stream = "0.3.2"
 async-trait = "0.1.50"
 axum = "0.6.17"
@@ -15,10 +24,10 @@ axum-macros = "0.3.7"
 bitflags = { version = "2.4.2", features = ["serde"] }
 chrono = "0.2"
 clap = { version = "4.0", features = ["cargo", "derive", "env"] }
-cssparser = "0.29"
 dot-generator = "0.2.0"
 dot-structures = "0.1.0"
 env_logger = "0.7.1"
+fantoccini = "0.19.3"
 flate2 = { version = "1", features = ["tokio"] }
 futures-core = "0.3.17"
 getopts = "0.2.19"
@@ -27,11 +36,8 @@ git2 = "0.16.1"
 globset = "0.4.8"
 hyper = "0.10"
 include_dir = "0.7.2"
-insta = { version = "1.14.0", features = ["json"] }
+insta = { version = "1.39.0", features = ["json"] }
 ipdl_parser = { path = "./ipdl_parser" }
-# asuth picked this version because our Cargo.lock already had 0.7.11 for our
-# rls-analysis dep.
-itertools = "0.10"
 json-structural-diff = "0.1.0"
 lazy_static = "1.1"
 lexical-sort = "0.3"
@@ -51,21 +57,24 @@ reqwest = "0.11.3"
 rls-analysis = "0.18.1"
 rls-data = "0.19.1"
 scip = "0.3.3"
+# NOTE: serde_json dependency is also defined above, without "std" feature.
+#       The "std" feature should be enabled only for non-wasm case.
+serde_json = { version = "1.0.113", features = ["preserve_order", "std"] }
 shell-words = "1.0.0"
-# Note that the "rc" feature as documented at https://serde.rs/feature-flags.html
-# does not make any effort to do interning
-serde = { version = "1.0.196", features = ["derive", "rc", "std"] }
-serde_json = { version = "1.0.113", features = ["preserve_order"] }
-serde_repr = "0.1.18"
+termcolor = "1.4.1"
 tokio = { version = "1.6.0", features = ["rt-multi-thread", "net", "macros", "fs", "io-util", "signal"] }
 tokio-stream = "0.1.8"
-tree-sitter = "0.20.9"
-tree-sitter-mozcpp = "0.20.2"
-tree-sitter-python = "0.20.2"
-tree-sitter-rust = "0.20.3"
-tree-sitter-typescript = "0.20.2"
-tree-sitter-java = "0.20.2"
-tree-sitter-kotlin = { git = "https://github.com/fwcd/tree-sitter-kotlin.git", rev = "5b7ca7a611eac3234cd0a38b6257effa8888f89d" }
+tree-sitter = "0.23.0"
+# We previously used tree-sitter-mozcpp because it understands our XPCOM
+# macrology and doesn't freak out, but since it is only used for our WIP
+# hyperblame implementation and lags behind on updates, we are switching to
+# tree-sitter-cpp for now.
+tree-sitter-cpp = "0.23.0"
+tree-sitter-python = "0.23.2"
+tree-sitter-rust = "0.23.0"
+tree-sitter-typescript = "0.23.0"
+tree-sitter-java = "0.23.2"
+tree-sitter-kotlin-ng = "1.0.1"
 toml = "0.7.3"
 tonic = "0.7.1"
 tracing = "0.1.37"
