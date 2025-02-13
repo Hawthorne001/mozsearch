@@ -59,5 +59,10 @@ make
 popd
 
 pushd mozsearch/tools
-cargo build --release --verbose
+CARGO_INCREMENTAL=false cargo build --release --verbose
+rm -rf target/build target/deps
+popd
+
+pushd mozsearch/scripts/web-analyze/wasm-css-analyzer
+./build.sh
 popd
