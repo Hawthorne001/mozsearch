@@ -1,16 +1,26 @@
 <table class="symbol-tree-table">
-{% if table.columns != empty %}
   <thead>
     <tr>
-    {% for col in table.columns %}
-        <th scope="col">{% include 'query_results/basic_markup_array.liquid' markup: col.contents %}</th>
-    {% endfor %}
+      <th class="name-cell">Name</th>
+      <th class="type-cell">Type</th>
+      <th class="line-cell">Line</th>
+      {%- for platform in table.platforms -%}
+        <th colspan="2">{{- platform | escape -}}</th>
+      {%- endfor -%}
+    </tr>
+    <tr>
+      <th class="name-cell"></th>
+      <th class="type-cell"></th>
+      <th class="line-cell"></th>
+      {%- for platform in table.platforms -%}
+        <th>Offset</th>
+        <th>Size</th>
+      {%- endfor -%}
     </tr>
   </thead>
-{% endif %}
   <tbody>
     {%- for kid in table.rows -%}
-      {%- include 'query_results/symbol_tree_table_node.liquid' node: kid -%}
+      {%- include 'query_results/symbol_tree_table_node.liquid' node: kid, platforms: table.platforms -%}
     {%- endfor -%}
   </tbody>
 </table>

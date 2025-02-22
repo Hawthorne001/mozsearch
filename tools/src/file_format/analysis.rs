@@ -1,19 +1,36 @@
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Debug;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+use std::hash::Hash;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::BufRead;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::BufReader;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
+use std::marker::PhantomData;
+use std::ops::Deref;
 
 use itertools::Itertools;
 
+#[cfg(not(target_arch = "wasm32"))]
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{from_str, from_value, Map, Value};
+#[cfg(not(target_arch = "wasm32"))]
+use serde_json::from_str;
+use serde_json::{from_value, Map, Value};
 use serde_repr::*;
-use ustr::{ustr, Ustr, UstrMap};
 
-use super::ontology_mapping::OntologyPointerKind;
+#[cfg(not(target_arch = "wasm32"))]
+use ustr::{ustr, Ustr, UstrMap};
+#[cfg(target_arch = "wasm32")]
+type Ustr = String;
+
+use super::ontology_pointer_kind::OntologyPointerKind;
 
 #[derive(Copy, Clone, Default, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct Location {
@@ -23,6 +40,12 @@ pub struct Location {
     pub col_start: u32,
     /// 0-based end column, inclusive.
     pub col_end: u32,
+}
+
+impl Location {
+    pub fn is_file_target(&self) -> bool {
+        self.lineno == 1 && self.col_start == 0 && self.col_end == 0
+    }
 }
 
 #[derive(Clone, Default, Eq, PartialEq, PartialOrd, Ord, Debug)]
@@ -35,8 +58,8 @@ pub struct LineRange {
 
 impl LineRange {
     pub fn is_empty(&self) -> bool {
-        (self.start_lineno == 0 && self.end_lineno == 0) ||
-        (self.start_lineno == u32::MAX && self.end_lineno == u32::MAX)
+        (self.start_lineno == 0 && self.end_lineno == 0)
+            || (self.start_lineno == u32::MAX && self.end_lineno == u32::MAX)
     }
 }
 
@@ -112,6 +135,7 @@ pub enum AnalysisKind {
     Alias,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl AnalysisKind {
     pub fn to_ustr(&self) -> Ustr {
         // We could obviously precompute/LAZY_STATIC these
@@ -138,18 +162,46 @@ pub enum TargetTag {
     Target = 1,
 }
 
+/// We use this trait instead of From<&str> to avoid explicit lifetime.
+pub trait FromStr {
+    fn from(s: &str) -> Self;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl FromStr for Ustr {
+    fn from(s: &str) -> Self {
+        ustr(s)
+    }
+}
+
+impl FromStr for String {
+    fn from(s: &str) -> Self {
+        s.to_string()
+    }
+}
+
+fn string_or_ustr_is_empty<StrT>(s: &StrT) -> bool
+where
+    StrT: Deref<Target = str>,
+{
+    s.is_empty()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AnalysisTarget {
+pub struct AnalysisTarget<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     pub target: TargetTag,
     pub kind: AnalysisKind,
     #[serde(default)]
-    pub pretty: Ustr,
+    pub pretty: StrT,
     #[serde(default)]
-    pub sym: Ustr,
-    #[serde(default, skip_serializing_if = "Ustr::is_empty")]
-    pub context: Ustr,
-    #[serde(default, skip_serializing_if = "Ustr::is_empty")]
-    pub contextsym: Ustr,
+    pub sym: StrT,
+    #[serde(default, skip_serializing_if = "string_or_ustr_is_empty")]
+    pub context: StrT,
+    #[serde(default, skip_serializing_if = "string_or_ustr_is_empty")]
+    pub contextsym: StrT,
     #[serde(
         rename = "peekRange",
         default,
@@ -168,58 +220,84 @@ pub enum StructuredTag {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StructuredSuperInfo {
+pub struct StructuredSuperInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     #[serde(default)]
-    pub sym: Ustr,
+    pub sym: StrT,
+    #[serde(rename = "offsetBytes", default)]
+    pub offset_bytes: u32,
     #[serde(default)]
-    pub props: Vec<Ustr>,
+    pub props: Vec<StrT>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StructuredArgInfo {
-    pub name: Ustr,
+pub struct StructuredArgInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
+    pub name: StrT,
     #[serde(rename = "type", default)]
-    pub type_pretty: Ustr,
+    pub type_pretty: StrT,
     #[serde(rename = "typesym", default)]
-    pub type_sym: Ustr,
+    pub type_sym: StrT,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StructuredMethodInfo {
+pub struct StructuredMethodInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     #[serde(default)]
-    pub pretty: Ustr,
+    pub pretty: StrT,
     #[serde(default)]
-    pub sym: Ustr,
+    pub sym: StrT,
     #[serde(default)]
-    pub props: Vec<Ustr>,
+    pub props: Vec<StrT>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub labels: BTreeSet<Ustr>,
+    pub labels: BTreeSet<StrT>,
     #[serde(default)]
-    pub args: Vec<StructuredArgInfo>,
+    pub args: Vec<StructuredArgInfo<StrT>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct StructuredBitPositionInfo {
     pub begin: u32,
     pub width: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StructuredOverrideInfo {
+pub struct StructuredOverrideInfo<StrT = Ustr> {
     #[serde(default)]
-    pub sym: Ustr,
+    pub sym: StrT,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StructuredFieldInfo {
+pub struct StructuredFieldInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
+    /// The field definition's location in "PATH#line-line" or "PATH#line" format.
+    ///
+    /// If this field is defined in single line, "PATH#line" format is used,
+    /// otherwise "PATH#line-line" format is used with first line and last line.
+    ///
+    /// If this field is defined in the same file as struct itself,
+    /// PATH part is omitted.
+    /// Otherwise PATH is the full path inside the repository.
+    ///
+    /// TODO: Use relative path from struct's file to reduce the size.
+    #[serde(rename = "lineRange", default)]
+    pub line_range: StrT,
     #[serde(default)]
-    pub pretty: Ustr,
+    pub pretty: StrT,
     #[serde(default)]
-    pub sym: Ustr,
+    pub sym: StrT,
     #[serde(rename = "type", default)]
-    pub type_pretty: Ustr,
+    pub type_pretty: StrT,
     #[serde(rename = "typesym", default)]
-    pub type_sym: Ustr,
+    pub type_sym: StrT,
     // XXX this should be made Optional like size_bytes.
     #[serde(rename = "offsetBytes", default)]
     pub offset_bytes: u32,
@@ -228,15 +306,18 @@ pub struct StructuredFieldInfo {
     #[serde(rename = "sizeBytes")]
     pub size_bytes: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub labels: BTreeSet<Ustr>,
+    pub labels: BTreeSet<StrT>,
     #[serde(default, rename = "pointerInfo", skip_serializing_if = "Vec::is_empty")]
-    pub pointer_info: Vec<StructuredPointerInfo>,
+    pub pointer_info: Vec<StructuredPointerInfo<StrT>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StructuredPointerInfo {
+pub struct StructuredPointerInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     pub kind: OntologyPointerKind,
-    pub sym: Ustr,
+    pub sym: StrT,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -244,8 +325,8 @@ pub struct StructuredPointerInfo {
 pub enum BindingSlotKind {
     /// A class that directly implements or will be subclassed.
     Class,
-    /// For situations like XPConnect interfaces reflected into JS (and maybe
-    /// WebIDL?) where we are describing the symbol that exposes the IDL
+    /// For situations like XPConnect interfaces reflected into JS and
+    /// WebIDL where we are describing the symbol that exposes the IDL
     /// interface into the language, but where that symbol is not directly part
     /// of a class hierarchy.  I'm really not sure about the WebIDL case here,
     /// and it probably will want to depend on how we end up implementing the
@@ -255,7 +336,7 @@ pub enum BindingSlotKind {
     InterfaceName,
     /// Callable.
     Method,
-    /// A field/attribute/property that has JS XPIDL semantics where we only
+    /// A field/attribute/property that has JS XPIDL or WebIDL semantics where we only
     /// have a single symbol name but it could correspond to a property or any
     /// combination of a getter/setter.
     Attribute,
@@ -290,10 +371,20 @@ pub enum BindingSlotLang {
 #[serde(rename_all = "lowercase")]
 pub enum BindingOwnerLang {
     Idl,
+    Prefs,
     Cpp,
     JS,
     Rust,
     Jvm,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BindingImplKind {
+    // The auto-generated binding.
+    Binding,
+    // The actual implementation called by the binding.
+    Impl,
 }
 
 /// The binding slot mechanism is used to describe the exclusive relationship
@@ -317,15 +408,20 @@ pub struct BindingSlotProps {
     pub slot_kind: BindingSlotKind,
     #[serde(rename = "slotLang")]
     pub slot_lang: BindingSlotLang,
+    #[serde(rename = "implKind", default)]
+    pub impl_kind: Option<BindingImplKind>,
     #[serde(rename = "ownerLang")]
     pub owner_lang: BindingOwnerLang,
 }
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StructuredBindingSlotInfo {
+pub struct StructuredBindingSlotInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     #[serde(flatten)]
     pub props: BindingSlotProps,
     #[serde(default)]
-    pub sym: Ustr,
+    pub sym: StrT,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -395,11 +491,14 @@ pub enum OntologySlotKind {
 /// user should probably just keep typing if they are interested in a specific
 /// preference.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct OntologySlotInfo {
+pub struct OntologySlotInfo<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     #[serde(rename = "slotKind")]
     pub slot_kind: OntologySlotKind,
     /// The symbols
-    pub syms: Vec<Ustr>,
+    pub syms: Vec<StrT>,
 }
 
 /// The structured record type extracts out the necessary information to uniquely identify the
@@ -412,12 +511,15 @@ pub struct OntologySlotInfo {
 /// embedding the other variants observed under a `variants` attribute.  See `analysis.md` and
 /// `merge-analyses.rs` for more details.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AnalysisStructured {
+pub struct AnalysisStructured<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     pub structured: StructuredTag,
     #[serde(default)]
-    pub pretty: Ustr,
+    pub pretty: StrT,
     #[serde(default)]
-    pub sym: Ustr,
+    pub sym: StrT,
     // XXX Adding this right now for scip-indexer because we're using the analysis
     // rep as the canonical info to provide to the source record, and right now this
     // only exists on source records and fields.
@@ -425,94 +527,118 @@ pub struct AnalysisStructured {
     // appropriate; especially because at least initially in C++ we'll only have
     // this data from the source record.
     // TODO: consider whether we should have type_sym here too.
-    pub type_pretty: Option<Ustr>,
+    pub type_pretty: Option<StrT>,
     #[serde(default)]
-    pub kind: Ustr,
+    pub kind: StrT,
     // Comes from the ConcisePerFileInfo where the structured record was found.
     #[serde(default)]
-    pub subsystem: Option<Ustr>,
+    pub subsystem: Option<StrT>,
 
     #[serde(rename = "parentsym", skip_serializing_if = "Option::is_none")]
-    pub parent_sym: Option<Ustr>,
+    pub parent_sym: Option<StrT>,
     #[serde(rename = "slotOwner", skip_serializing_if = "Option::is_none")]
-    pub slot_owner: Option<StructuredBindingSlotInfo>,
+    pub slot_owner: Option<StructuredBindingSlotInfo<StrT>>,
 
     #[serde(rename = "implKind", default)]
-    pub impl_kind: Ustr,
+    pub impl_kind: StrT,
 
     #[serde(rename = "sizeBytes")]
     pub size_bytes: Option<u32>,
+    #[serde(rename = "alignmentBytes")]
+    pub alignment_bytes: Option<u32>,
+    #[serde(rename = "ownVFPtrBytes")]
+    pub own_vf_ptr_bytes: Option<u32>,
 
     #[serde(rename = "bindingSlots", default)]
-    pub binding_slots: Vec<StructuredBindingSlotInfo>,
+    pub binding_slots: Vec<StructuredBindingSlotInfo<StrT>>,
     #[serde(rename = "ontologySlots", default)]
-    pub ontology_slots: Vec<OntologySlotInfo>,
+    pub ontology_slots: Vec<OntologySlotInfo<StrT>>,
     #[serde(default)]
-    pub supers: Vec<StructuredSuperInfo>,
+    pub supers: Vec<StructuredSuperInfo<StrT>>,
     #[serde(default)]
-    pub methods: Vec<StructuredMethodInfo>,
+    pub methods: Vec<StructuredMethodInfo<StrT>>,
     // TODO: This really needs to be the union of all fields across all variants
     // to begin with; right now for the layout table we do manual stuff, but
     // this really is not sufficient.
     #[serde(default)]
-    pub fields: Vec<StructuredFieldInfo>,
+    pub fields: Vec<StructuredFieldInfo<StrT>>,
     #[serde(default)]
-    pub overrides: Vec<StructuredOverrideInfo>,
+    pub overrides: Vec<StructuredOverrideInfo<StrT>>,
     #[serde(default)]
-    pub props: Vec<Ustr>,
+    pub props: Vec<StrT>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub labels: BTreeSet<Ustr>,
+    pub labels: BTreeSet<StrT>,
 
     // ### Derived by cross-referencing
     #[serde(rename = "idlsym", skip_serializing_if = "Option::is_none")]
-    pub idl_sym: Option<Ustr>,
+    pub idl_sym: Option<StrT>,
     // Note: Originally these (subclasses, overriddenBy) were meant to hold
     // { pretty, sym } for symmetry, but now the code and docs do reflect these
     // as being symbol only.
     #[serde(rename = "subclasses", default, skip_serializing_if = "Vec::is_empty")]
-    pub subclass_syms: Vec<Ustr>,
-    #[serde(rename = "overriddenBy", default, skip_serializing_if = "Vec::is_empty")]
-    pub overridden_by_syms: Vec<Ustr>,
+    pub subclass_syms: Vec<StrT>,
+    #[serde(
+        rename = "overriddenBy",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub overridden_by_syms: Vec<StrT>,
+
+    #[serde(default)]
+    pub variants: Vec<AnalysisStructured<StrT>>,
 
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
 
-impl AnalysisStructured {
+impl<StrT> AnalysisStructured<StrT>
+where
+    StrT: Clone
+        + Debug
+        + serde::de::DeserializeOwned
+        + Default
+        + Deref<Target = str>
+        + FromStr
+        + Hash
+        + Ord
+        + PartialEq,
+{
     // Retrieve the platforms from "extra" if present; this could arguably just
     // be serialized in the first place.
     pub fn platforms(&self) -> Vec<String> {
         match self.extra.get("platforms") {
             Some(val) => from_value(val.clone()).unwrap_or_default(),
-            _ => vec![]
+            _ => vec![],
         }
     }
 
-    // TODO: As mentioned on `fields`, we need to unify things during crossref
-    // otherwise we may be blind to some fields for our fancy magic.
-    pub fn fields_across_all_variants(&self) -> Vec<(Vec<String>, Vec<StructuredFieldInfo>)> {
-        let variants: Vec<AnalysisStructured> = match self.extra.get("variants") {
-            Some(val) => from_value(val.clone()).unwrap_or_default(),
-            _ => vec![]
-        };
+    pub fn per_platform(&self) -> Vec<(Option<String>, &Self)> {
         // XXX at least for things that are subclassed it seems like we can end up with multiple
         // structured representations right now, so we need to keep track of platforms we've seen
         // so we can avoid adding them a subsequent time.
         let mut seen = HashSet::new();
-        let main_platforms = self.platforms();
-        for p in &main_platforms {
-            seen.insert(p.to_owned());
-        }
-        let mut results = vec![(main_platforms, self.fields.clone())];
 
-        for v in variants {
-            let var_platforms = v.platforms();
-            // Try and insert the platforms into the seen set; insert returns true
-            // if the element is newly inserted.
-            if !var_platforms.iter().all(|p| seen.insert(p.to_owned())) {
-                continue;
+        let mut results = vec![];
+
+        let main_platforms = self.platforms();
+        if main_platforms.is_empty() {
+            results.push((None, self));
+        } else {
+            for p in main_platforms {
+                seen.insert(p.to_owned());
+                results.push((Some(p.clone()), self));
             }
-            results.push((var_platforms, v.fields));
+        }
+        for v in &self.variants {
+            for p in &v.platforms() {
+                // Try and insert the platforms into the seen set; insert returns true
+                // if the element is newly inserted.
+                if !seen.insert(p.to_owned()) {
+                    continue;
+                }
+
+                results.push((Some(p.clone()), v));
+            }
         }
         results
     }
@@ -537,34 +663,38 @@ mod bool_as_int {
     }
 }
 
-/// Workaround for join() not currently working on the Vec<Ustr>
-pub fn join_ustr_vec(arr: &Vec<Ustr>, joiner: &str) -> String {
-    arr
-        .iter()
-        .map(|x| x.as_str())
-        .collect::<Vec<&str>>()
-        .join(joiner)
+struct SerializeVecString<StrT>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
+    phantom: PhantomData<StrT>,
 }
 
-mod comma_delimited_vec {
-    use serde::{Deserialize, Deserializer, Serializer};
-    use ustr::{ustr, Ustr};
-
-    use super::join_ustr_vec;
-
-    pub fn serialize<S>(arr: &Vec<Ustr>, serializer: S) -> Result<S::Ok, S::Error>
+impl<StrT> SerializeVecString<StrT>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
+    pub fn serialize<S>(arr: &[StrT], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        serializer.serialize_str(&join_ustr_vec(arr, ","))
+        let s = SerializeVecString::<StrT>::join(arr);
+        serializer.serialize_str(&s)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Ustr>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<StrT>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(s.split(',').map(ustr).collect())
+        Ok(s.split(',').map(|s| FromStr::from(s)).collect())
+    }
+
+    pub fn join(arr: &[StrT]) -> String {
+        arr.iter()
+            .map(|x| x.as_ref())
+            .collect::<Vec<&str>>()
+            .join(",")
     }
 }
 
@@ -579,14 +709,55 @@ fn bool_is_false(b: &bool) -> bool {
     !b
 }
 
+/// Maps tracking expansion information.
+/// Both maps are keyd by `{symbol}(,{dependencies})*` then by platform.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AnalysisSource {
+#[serde(rename_all = "camelCase")]
+pub enum ExpansionInfo {
+    ExpandsTo(BTreeMap<String, BTreeMap<String, String>>),
+    InExpansionAt(BTreeMap<String, BTreeMap<String, Vec<usize>>>),
+}
+
+/// Confidence Level
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub enum ConfidenceLevel {
+    CppTemplateHeuristic,
+    Concrete,
+}
+
+enum ConfidenceIterator<'a> {
+    Set(std::iter::Copied<std::slice::Iter<'a, ConfidenceLevel>>),
+    Default(std::iter::RepeatN<ConfidenceLevel>),
+}
+
+impl Iterator for ConfidenceIterator<'_> {
+    type Item = ConfidenceLevel;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Set(it) => it.next(),
+            Self::Default(it) => it.next(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnalysisSource<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     pub source: SourceTag,
-    #[serde(with = "comma_delimited_vec")]
-    pub syntax: Vec<Ustr>,
-    pub pretty: Ustr,
-    #[serde(with = "comma_delimited_vec")]
-    pub sym: Vec<Ustr>,
+    #[serde(
+        serialize_with = "SerializeVecString::<StrT>::serialize",
+        deserialize_with = "SerializeVecString::<StrT>::deserialize"
+    )]
+    pub syntax: Vec<StrT>,
+    pub pretty: StrT,
+    #[serde(
+        serialize_with = "SerializeVecString::<StrT>::serialize",
+        deserialize_with = "SerializeVecString::<StrT>::deserialize"
+    )]
+    pub sym: Vec<StrT>,
     #[serde(default, with = "bool_as_int", skip_serializing_if = "bool_is_false")]
     pub no_crossref: bool,
     #[serde(
@@ -599,17 +770,27 @@ pub struct AnalysisSource {
     /// representation of the type that may have all kinds of qualifiers that searchfox otherwise
     /// ignores.  Not all records will have this type.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    pub type_pretty: Option<Ustr>,
+    pub type_pretty: Option<StrT>,
     /// For records that have an associated type, we may be able to map the type to a searchfox
     /// symbol, and if so, this is that.  Even if the record has a `type_pretty`, it may not have a
     /// type_sym.
     #[serde(rename = "typesym", skip_serializing_if = "Option::is_none")]
-    pub type_sym: Option<Ustr>,
+    pub type_sym: Option<StrT>,
     #[serde(rename = "argRanges", default, skip_serializing_if = "Vec::is_empty")]
     pub arg_ranges: Vec<SourceRange>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub expansion_info: Option<ExpansionInfo>,
+    /// Confidence level for each symbol.
+    /// When Some it should have the same length as sym and defines the confidence level for each symbol.
+    /// When None all symbols are assumed to have the highest confidence level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Vec<ConfidenceLevel>>,
 }
 
-impl AnalysisSource {
+impl<StrT> AnalysisSource<StrT>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
     /// Merges the `syntax`, `sym`, `no_crossref`, and `nesting_range` fields from `other`
     /// into `self`. The `no_crossref` field can be different sometimes
     /// with different versions of clang being used across different
@@ -622,7 +803,7 @@ impl AnalysisSource {
     ///
     /// Also asserts that the `pretty` field is the same because otherwise
     /// the merge doesn't really make sense.
-    pub fn merge(&mut self, mut other: AnalysisSource) {
+    pub fn merge(&mut self, mut other: AnalysisSource<StrT>) {
         assert_eq!(self.pretty, other.pretty);
         self.no_crossref &= other.no_crossref;
         self.syntax.append(&mut other.syntax);
@@ -638,8 +819,30 @@ impl AnalysisSource {
         //
         // This currently will give precedence to the order in "other" rather than "self", but
         // it's still consistent.
-        other.sym.append(&mut self.sym);
-        self.sym.extend(other.sym.drain(0..).unique());
+        if self.confidence.is_none() && other.confidence.is_none() {
+            other.sym.append(&mut self.sym);
+            self.sym.extend(other.sym.drain(0..).unique());
+            // self.confidence stays None, everything is assumed to be Concrete
+        } else {
+            let confidence: Vec<_> = other.confidences().chain(self.confidences()).collect();
+
+            other.sym.append(&mut self.sym);
+
+            let mut confidences = HashMap::<StrT, ConfidenceLevel>::new();
+            for (sym, confidence) in other.sym.into_iter().zip(confidence.into_iter()) {
+                let entry = confidences.entry(sym);
+                entry
+                    .and_modify(|existing_confidence| {
+                        *existing_confidence = confidence.max(*existing_confidence)
+                    })
+                    .or_insert_with_key(|sym| {
+                        self.sym.push(sym.clone());
+                        confidence
+                    });
+            }
+            self.confidence = Some(self.sym.iter().map(|sym| confidences[sym]).collect());
+        }
+
         self.nesting_range.union(other.nesting_range);
         // We regrettably have no guarantee that the types are the same, so just pick a type when
         // we have it.
@@ -649,6 +852,44 @@ impl AnalysisSource {
         }
         if let Some(type_sym) = other.type_sym {
             self.type_sym.get_or_insert(type_sym);
+        }
+
+        use ExpansionInfo::*;
+        match (&mut self.expansion_info, &mut other.expansion_info) {
+            (_, None) => {}
+            (expansion_info @ &mut None, m) => *expansion_info = m.take(),
+            (Some(ExpandsTo(_)), Some(InExpansionAt(_)))
+            | (Some(InExpansionAt(_)), Some(ExpandsTo(_))) => {
+                panic!("Trying to merge an expansion and an expanded symbol.")
+            }
+            (&mut Some(ExpandsTo(ref mut a)), &mut Some(ExpandsTo(ref mut b))) => {
+                for (k, mut v) in core::mem::take(b) {
+                    a.entry(k).and_modify(|a_v| a_v.append(&mut v)).or_insert(v);
+                }
+            }
+            (&mut Some(InExpansionAt(ref mut a)), &mut Some(InExpansionAt(ref mut b))) => {
+                for (k, mut v) in core::mem::take(b) {
+                    a.entry(k)
+                        .and_modify(|a_v| {
+                            for (k0, mut v0) in core::mem::take(&mut v) {
+                                a_v.entry(k0)
+                                    .and_modify(|a_v0| a_v0.append(&mut v0))
+                                    .or_insert(v0);
+                            }
+                        })
+                        .or_insert(v);
+                }
+            }
+        }
+    }
+
+    pub fn confidences(&self) -> impl Iterator<Item = ConfidenceLevel> + use<'_, StrT> {
+        match &self.confidence {
+            Some(confidence) => ConfidenceIterator::Set(confidence.iter().copied()),
+            None => ConfidenceIterator::Default(std::iter::repeat_n(
+                ConfidenceLevel::Concrete,
+                self.sym.len(),
+            )),
         }
     }
 
@@ -661,22 +902,25 @@ impl AnalysisSource {
     /// pretty name.
     pub fn get_syntax_kind(&self) -> Option<&str> {
         // It's a given that we're using a standard ASCII space character.
-        return self.pretty.split(' ').next();
+        self.pretty.split(' ').next()
     }
 
     /// Returns the `sym` array joined with ",".  This convenience method exists
     /// because join() doesn't currently work on Ustr.
     pub fn get_joined_syms(&self) -> String {
-        join_ustr_vec(&self.sym, ",")
+        SerializeVecString::<StrT>::join(&self.sym)
     }
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum AnalysisUnion {
-    Target(AnalysisTarget),
-    Source(AnalysisSource),
-    Structured(AnalysisStructured),
+pub enum AnalysisUnion<StrT = Ustr>
+where
+    StrT: Clone + Debug + Default + Deref<Target = str> + FromStr + Hash + Ord + PartialEq,
+{
+    Target(AnalysisTarget<StrT>),
+    Source(AnalysisSource<StrT>),
+    Structured(AnalysisStructured<StrT>),
 }
 
 pub fn parse_location(loc: &str) -> Location {
@@ -691,9 +935,9 @@ pub fn parse_location(loc: &str) -> Location {
     let col_start = col_start.parse::<u32>().unwrap();
     let col_end = col_end.parse::<u32>().unwrap();
     Location {
-        lineno: lineno,
-        col_start: col_start,
-        col_end: col_end,
+        lineno,
+        col_start,
+        col_end,
     }
 }
 
@@ -792,6 +1036,7 @@ impl<'de> Deserialize<'de> for SourceRange {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_analysis<T>(
     filename: &str,
     filter: &mut dyn FnMut(Value, &Location, usize) -> Option<T>,
@@ -810,12 +1055,13 @@ pub fn read_analysis<T>(
 /// Note that the filter function is invoked as records are read in, which means
 /// that the sort order seen by the filter function is the order the file
 /// already had.  It's only the return value that's sorted and grouped.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_analyses<T>(
     filenames: &[String],
     filter: &mut dyn FnMut(Value, &Location, usize) -> Option<T>,
 ) -> Vec<WithLocation<Vec<T>>> {
     let mut result = Vec::new();
-    for (i_file, filename) in filenames.into_iter().enumerate() {
+    for (i_file, filename) in filenames.iter().enumerate() {
         let file = match File::open(filename) {
             Ok(f) => f,
             Err(_) => {
@@ -860,9 +1106,8 @@ pub fn read_analyses<T>(
             // Destructively pull the "loc" out before passing it into the filter.  This is for
             // read_structured which stores everything it doesn't directly process in `payload`.
             let loc = parse_location(obj.remove("loc").unwrap().as_str().unwrap());
-            match filter(data, &loc, i_file) {
-                Some(v) => result.push(WithLocation { data: v, loc: loc }),
-                None => {}
+            if let Some(v) = filter(data, &loc, i_file) {
+                result.push(WithLocation { data: v, loc })
             }
         }
     }
@@ -893,40 +1138,37 @@ pub fn read_analyses<T>(
         last_vec.push(r.data);
     }
 
-    match last_loc {
-        Some(ll) => result2.push(WithLocation {
+    if let Some(ll) = last_loc {
+        result2.push(WithLocation {
             loc: ll,
             data: last_vec,
-        }),
-        None => {}
+        })
     }
 
     result2
 }
 
-pub fn read_target(obj: Value, _loc: &Location, _i_size: usize) -> Option<AnalysisTarget> {
+pub fn read_target(obj: Value, _loc: &Location, _i_size: usize) -> Option<AnalysisTarget<Ustr>> {
     // XXX this shouldn't be necessary thanks to our tag, so this should be removable
-    if obj.get("target").is_none() {
-        return None;
-    }
+    obj.get("target")?;
 
     from_value(obj).ok()
 }
 
-pub fn read_structured(obj: Value, _loc: &Location, _i_size: usize) -> Option<AnalysisStructured> {
+pub fn read_structured(
+    obj: Value,
+    _loc: &Location,
+    _i_size: usize,
+) -> Option<AnalysisStructured<Ustr>> {
     // XXX this shouldn't be necessary thanks to our tag, so this should be removable
-    if obj.get("structured").is_none() {
-        return None;
-    }
+    obj.get("structured")?;
 
     from_value(obj).ok()
 }
 
-pub fn read_source(obj: Value, _loc: &Location, _i_size: usize) -> Option<AnalysisSource> {
+pub fn read_source(obj: Value, _loc: &Location, _i_size: usize) -> Option<AnalysisSource<Ustr>> {
     // XXX this shouldn't be necessary thanks to our tag, so this should be removable
-    if obj.get("source").is_none() {
-        return None;
-    }
+    obj.get("source")?;
 
     from_value(obj).ok()
 }
@@ -939,6 +1181,7 @@ pub struct Jump {
     pub pretty: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_jumps(filename: &str) -> UstrMap<Jump> {
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(&file);
