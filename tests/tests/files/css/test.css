@@ -1,0 +1,32 @@
+:root {
+  --in-content-text-color: #0c0c0d;
+  --text-color: var(--in-content-text-color);
+  --base-unit: 4px;
+  --secondary-text-color: var(--grey-50);
+  --色: red;
+}
+
+body {
+  background: url("chrome://global/content/test/chrome1.png");
+}
+
+a {
+  background-image: url("chrome://global/content/test/chrome1.png");
+}
+
+div {
+  background-image: url(chrome://global/content/test/chrome1.png);
+}
+
+@property --at-prop {
+}
+
+div {
+  --at-prop: 10;
+  transition: --at-prop 10s;
+
+  @property --at-prop-2 {
+  }
+  --at-prop-2: 10;
+  transition: --at-prop-2 10s;
+}
